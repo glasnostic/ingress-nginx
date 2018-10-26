@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package router;
+
+service ConfigService {
+  rpc GetNetworks (Request) returns (Networks) {
+  }
+}
+
+message Request {
+}
+
+message Networks {
+  repeated Network networks = 1;
+}
+
+message Network {
+  string real = 1;
+  string virtual = 2;
+  uint32 mask = 3;
+  bool owned = 4;
+}
