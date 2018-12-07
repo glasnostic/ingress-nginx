@@ -20,9 +20,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io/ioutil"
-	"os"
 	"reflect"
-	"strings"
 	"sync"
 	"time"
 
@@ -51,7 +49,6 @@ import (
 	"k8s.io/ingress-nginx/internal/ingress/defaults"
 	"k8s.io/ingress-nginx/internal/ingress/resolver"
 	"k8s.io/ingress-nginx/internal/k8s"
-	"k8s.io/ingress-nginx/internal/phantom"
 )
 
 // Storer is the interface that wraps the required methods to gather information
@@ -370,21 +367,11 @@ func New(checkOCSP bool,
 		},
 	}
 
-	glasnosticRouterAddr := ""
-	for _, env := range os.Environ() {
-		pair := strings.Split(env, "=")
-		if pair[0] == "GLASNOSTIC_ROUTER_ADDRESS" {
-			glasnosticRouterAddr = pair[1]
-		}
-	}
-	network, phantomNetwork, shouldUpdateEndpoints :=
-		phantom.GetPhantomFrom(glasnosticRouterAddr)
-
 	epEventHandler := cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			eps := obj.(*apiv1.Endpoints)
 
-			updateEndpoints(eps, network, phantomNetwork, shouldUpdateEndpoints)
+			updateEndpoints(eps)
 
 			updateCh.In() <- Event{
 				Type: CreateEvent,
@@ -401,7 +388,7 @@ func New(checkOCSP bool,
 			oep := old.(*apiv1.Endpoints)
 			ocur := cur.(*apiv1.Endpoints)
 
-			updateEndpoints(cep, network, phantomNetwork, shouldUpdateEndpoints)
+			updateEndpoints(cep)
 
 			if !reflect.DeepEqual(ocur.Subsets, oep.Subsets) {
 				updateCh <- Event{
