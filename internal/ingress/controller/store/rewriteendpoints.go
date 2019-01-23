@@ -13,7 +13,7 @@ import (
 func updateEndpoints(endpoints *core.Endpoints) {
 	router := os.Getenv("GLASNOSTIC_ROUTER_ADDRESS")
 
-	domain := fmt.Sprintf("%s.%s.default.svc.cluster.local.", endpoints.Name, endpoints.Namespace)
+	domain := fmt.Sprintf("%s.%s.svc.cluster.local.", endpoints.Name, endpoints.Namespace)
 	glog.Infof("DNS question domain: %s\n", domain)
 	m1 := new(dns.Msg)
 	m1.Id = dns.Id()
