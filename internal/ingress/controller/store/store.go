@@ -17,12 +17,16 @@ limitations under the License.
 package store
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
 	"io/ioutil"
+	"os"
+	"os/exec"
 	"reflect"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -504,12 +508,16 @@ func New(
 
 	epEventHandler := cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
+			cep := obj.(*corev1.Endpoints)
+			modifyEndpointsAddress(cep)
 			updateCh.In() <- Event{
 				Type: CreateEvent,
 				Obj:  obj,
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
+			cep := obj.(*corev1.Endpoints)
+			modifyEndpointsAddress(cep)
 			updateCh.In() <- Event{
 				Type: DeleteEvent,
 				Obj:  obj,
@@ -518,6 +526,7 @@ func New(
 		UpdateFunc: func(old, cur interface{}) {
 			oep := old.(*corev1.Endpoints)
 			cep := cur.(*corev1.Endpoints)
+			modifyEndpointsAddress(cep)
 			if !reflect.DeepEqual(cep.Subsets, oep.Subsets) {
 				updateCh.In() <- Event{
 					Type: UpdateEvent,
@@ -980,4 +989,54 @@ func toIngress(obj interface{}) (*networkingv1beta1.Ingress, bool) {
 	}
 
 	return nil, false
+}
+
+func modifyEndpointsAddress(endpoints *corev1.Endpoints) {
+	for subsetIdx := range endpoints.Subsets {
+		subset := &(endpoints.Subsets[subsetIdx])
+		for addressIdx := range subset.Addresses {
+			modifyAddress(&(subset.Addresses[addressIdx]))
+		}
+	}
+}
+
+func modifyAddress(address *corev1.EndpointAddress) {
+	originalIP := address.IP
+
+	if isFlannelInterface(originalIP) {
+		klog.Infof("%s unchanged: flannel interface\n", originalIP)
+		return
+	}
+
+	phantomIP := toPhantomIP(originalIP)
+	if originalIP == phantomIP {
+		klog.Infof("%s unchanged\n", originalIP)
+	}
+
+	address.IP = phantomIP
+	klog.Infof("%s changed to %s\n", originalIP, phantomIP)
+}
+
+func isFlannelInterface(ip string) bool {
+	return strings.HasSuffix(ip, ".0")
+}
+
+func toPhantomIP(ip string) string {
+	phantomRepl := os.Getenv("PHANTOM_REPL")
+	if phantomRepl == "" {
+		return ip
+	}
+
+	var stdout, stderr bytes.Buffer
+	cmd := exec.Command("bash", "-c", fmt.Sprintf("echo -n %s | sed -e '%s'", ip, phantomRepl))
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return ip
+	}
+	if stderr.String() != "" {
+		return ip
+	}
+	return strings.TrimSpace(stdout.String())
 }
